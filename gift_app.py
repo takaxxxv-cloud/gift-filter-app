@@ -16,7 +16,7 @@ def load_csv_safe(file):
     return pd.read_csv(file, encoding='cp932', encoding_errors='replace')
 
 # --- タイトル ---
-st.title("Data Nexus - Amazonギフト配布リスト作成ツール")
+st.title("🌐Data Nexus - Amazonギフト配布リスト作成ツール")
 st.markdown("複数のデータを統合し、対象者と配布金額を瞬時に算出。ファイルの読み込みからリスト生成まで、すべて全自動で実行されます。")
 
 # --- 左側のサイドバー ---
