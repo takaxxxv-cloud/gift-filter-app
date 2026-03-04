@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="GiftCalc Engine MAX", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="GiftCalc Engine", layout="wide", initial_sidebar_state="expanded")
 
 # どんなCSVでも読み込む無敵の関数
 def load_csv_safe(file):
@@ -16,7 +16,7 @@ def load_csv_safe(file):
     return pd.read_csv(file, encoding='cp932', encoding_errors='replace')
 
 # --- タイトル ---
-st.title(":orange[🎁 GiftCalc Engine MAX]")
+st.title("GiftCalc Engine ")
 st.markdown("##### Amazonギフト配布対象者・金額の自動計算ツール（複数キャンペーン統合版）")
 
 # --- 左側のサイドバー ---
