@@ -188,6 +188,3 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
             st.write("各キャンペーンの個別の計算結果（既存C対象額・SOLMINAC対象額）なども確認できます。")
             all_display_columns = ['ID', 'メールアドレス', 'is_solmina', 'is_registered', '保有fundID一覧', '既存C対象額', 'SOLMINAC対象額', '最終対象金額', '配布済金額', '今回配布金額']
             st.dataframe(master_df[all_display_columns], use_container_width=True)
-
-else:
-    st.info("左のパネルから必要なCSVファイルをすべてアップロードすると、自動計算がスタートします。")
