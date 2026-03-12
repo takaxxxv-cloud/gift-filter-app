@@ -1,12 +1,1 @@
-[theme]
-# ボタンやアクセントカラー（鮮やかな水色）
-primaryColor = "#00EAFF"
 
-# メイン画面の背景色（完全な黒）
-backgroundColor = "#000000"
-
-# サイドバーなどのサブ背景色（黒に少しだけグレーを混ぜて区切りを見やすく）
-secondaryBackgroundColor = "#111111"
-
-# すべてのテキストカラー（見やすい明るめの水色）
-textColor = "#00EAFF"
