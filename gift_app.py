@@ -1,7 +1,55 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Data Nexus", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Data Nexus", page_icon="🥂", layout="wide", initial_sidebar_state="expanded")
+
+# ==========================================
+# 💎 カスタムCSS（ブラック＆ゴールド）
+# ==========================================
+custom_css = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;600&display=swap');
+
+    html, body, [class*="css"] { font-family: 'Noto Serif JP', serif !important; }
+    .stApp { background-color: #0A0A0A; color: #F2F2F2; }
+    [data-testid="stSidebar"] { background-color: #141414 !important; border-right: 1px solid #332918; }
+    
+    div[data-testid="stMetricValue"] { color: #C5A059 !important; font-weight: 600; }
+    
+    div[data-testid="stDownloadButton"] > button {
+        background-color: transparent !important;
+        color: #C5A059 !important;
+        border: 1px solid #C5A059 !important;
+        border-radius: 2px !important;
+        transition: all 0.4s ease;
+        padding: 0.5rem 1.5rem;
+        letter-spacing: 1px;
+    }
+    div[data-testid="stDownloadButton"] > button:hover {
+        background-color: #C5A059 !important;
+        color: #0A0A0A !important;
+        border-color: #C5A059 !important;
+    }
+    
+    /* タブの装飾をゴールドに */
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] {
+        color: #8C8C8C;
+        border-bottom-color: transparent !important;
+        background-color: transparent !important;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #C5A059 !important;
+        border-bottom-color: #C5A059 !important;
+        font-weight: 600;
+    }
+
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+</style>
+"""
+st.markdown(custom_css, unsafe_allow_html=True)
 
 # どんなCSVでも読み込む無敵の関数
 def load_csv_safe(file):
@@ -16,12 +64,13 @@ def load_csv_safe(file):
     return pd.read_csv(file, encoding='cp932', encoding_errors='replace')
 
 # --- タイトル ---
-st.title("🌐Data Nexus - Amazonギフト配布リスト作成ツール")
-st.markdown("複数のデータを統合し、対象者と配布金額を瞬時に算出。ファイルの読み込みからリスト生成まで、すべて全自動で実行されます。")
+st.markdown("<h1 style='color: #C5A059; font-weight: 300; letter-spacing: 2px;'>Data Nexus</h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #8C8C8C; font-size: 1.1rem; letter-spacing: 1px;'>Amazonギフト配布リスト作成システム</p>", unsafe_allow_html=True)
+st.divider()
 
 # --- 左側のサイドバー ---
 with st.sidebar:
-    st.header("⚙️ コントロールパネル")
+    st.markdown("<h3 style='color: #C5A059; font-weight: 400;'>コントロールパネル</h3>", unsafe_allow_html=True)
     st.write("必要なCSVファイルをアップロードしてください。")
     uploaded_file_members = st.file_uploader("1. 投資家一覧CSV（必須）", type="csv")
     uploaded_file_investors = st.file_uploader("2. 出資者一覧CSV（必須）", type="csv")
@@ -29,14 +78,20 @@ with st.sidebar:
     uploaded_file_gifts = st.file_uploader("4. 配布済みリストCSV（任意）", type="csv")
     
     st.divider()
-    st.caption("💡 【既存キャンペーン】\n"
-               "・1~4あり ＆ 5以降なし → 0円\n"
-               "・1~4あり ＆ 5か6あり → 4,000円\n"
-               "・1~4なし ＆ 5以降あり → 2,000円\n\n"
-               "💡 【SOLMINAキャンペーン】\n"
-               "・TORCHES会員登録 → 2,000円\n"
-               "・fundID=13までに初回投資 → ＋2,000円\n\n"
-               "※両キャンペーンは併用不可（最大4,000円）です。高い方の対象金額を自動で採用します。")
+    
+    # 💡 キャンペーンの案内文もシックなデザインに
+    st.markdown("""
+    <div style='color: #8C8C8C; font-size: 0.85rem; line-height: 1.6;'>
+        <strong style='color: #C5A059;'>💡 【既存キャンペーン】</strong><br>
+        ・1~4あり ＆ 5以降なし → 0円<br>
+        ・1~4あり ＆ 5か6あり → 4,000円<br>
+        ・1~4なし ＆ 5以降あり → 2,000円<br><br>
+        <strong style='color: #C5A059;'>💡 【SOLMINAキャンペーン】</strong><br>
+        ・TORCHES会員登録 → 2,000円<br>
+        ・fundID=13までに初回投資 → ＋2,000円<br><br>
+        ※両キャンペーンは併用不可（最大4,000円）です。高い方の対象金額を自動で採用します。
+    </div>
+    """, unsafe_allow_html=True)
 
 # --- メイン画面 ---
 # 必須の3ファイルが揃ったら計算スタート
@@ -52,10 +107,10 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
     missing_sol = ['メールアドレス'] if 'メールアドレス' not in df_sol.columns else []
     
     if missing_mem or missing_inv or missing_sol:
-        if missing_mem: st.error("エラー: 投資家一覧CSVに「メールアドレス」が見つかりません。")
-        if missing_inv: st.error(f"エラー: 出資者一覧CSVに不足項目があります: {missing_inv}")
-        if missing_sol: st.error("エラー: SOLMINA投資家リストCSVに「メールアドレス」が見つかりません。")
-        st.info("※すべてのファイルの照合キーとして「メールアドレス」の列を使用します。列名が異なる場合はCSVの列名を変更してください。")
+        if missing_mem: st.markdown("<div style='color: #B35B5B; border-left: 3px solid #B35B5B; padding-left: 10px; margin-bottom: 10px;'>エラー: 投資家一覧CSVに「メールアドレス」が見つかりません。</div>", unsafe_allow_html=True)
+        if missing_inv: st.markdown(f"<div style='color: #B35B5B; border-left: 3px solid #B35B5B; padding-left: 10px; margin-bottom: 10px;'>エラー: 出資者一覧CSVに不足項目があります: {missing_inv}</div>", unsafe_allow_html=True)
+        if missing_sol: st.markdown("<div style='color: #B35B5B; border-left: 3px solid #B35B5B; padding-left: 10px; margin-bottom: 10px;'>エラー: SOLMINA投資家リストCSVに「メールアドレス」が見つかりません。</div>", unsafe_allow_html=True)
+        st.markdown("<div style='border-left: 2px solid #C5A059; padding-left: 15px; color: #8C8C8C;'>※すべてのファイルの照合キーとして「メールアドレス」の列を使用します。列名が異なる場合はCSVの列名を変更してください。</div>", unsafe_allow_html=True)
     else:
         # 配布済みリストの読み込み
         gift_summary = pd.DataFrame(columns=['メールアドレス', '配布済金額'])
@@ -67,9 +122,9 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
                 gift_summary = df_gift.groupby('受取人様Eメール')['金額'].sum().reset_index()
                 gift_summary = gift_summary.rename(columns={'受取人様Eメール': 'メールアドレス', '金額': '配布済金額'})
             else:
-                st.warning("配布済みリストの列名（受取人様Eメール, 金額）が不正です。今回は0円として計算します。")
+                st.markdown("<div style='color: #D4AF37; border-left: 3px solid #D4AF37; padding-left: 10px; margin-bottom: 20px;'>⚠️ 警告: 配布済みリストの列名（受取人様Eメール, 金額）が不正です。今回は0円として計算します。</div>", unsafe_allow_html=True)
 
-        st.write("### 📊 計算結果レポート")
+        st.markdown("<h3 style='color: #F2F2F2; font-weight: 300;'>📊 計算結果レポート</h3>", unsafe_allow_html=True)
         
         # 1. 出資者一覧のクリーンアップ
         df_inv = df_inv.dropna(subset=['fundID']).copy() 
@@ -180,11 +235,21 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
             if len(distribute_df) > 0:
                 st.dataframe(distribute_df[display_columns], use_container_width=True)
                 csv_data = distribute_df[display_columns].to_csv(index=False).encode('utf-8-sig')
+                st.markdown("<br>", unsafe_allow_html=True)
                 st.download_button(label="📥 今回配布リストをダウンロード", data=csv_data, file_name="ギフト今回配布リスト.csv", mime="text/csv")
             else:
-                st.info("全員に配布済みか、新たに対象となる人がいません。")
+                st.markdown("<div style='border-left: 2px solid #C5A059; padding-left: 15px; color: #8C8C8C; margin-top: 20px;'>全員に配布済みか、新たに対象となる人がいません。</div>", unsafe_allow_html=True)
                 
         with tab2:
-            st.write("各キャンペーンの個別の計算結果（既存C対象額・SOLMINAC対象額）なども確認できます。")
+            st.markdown("<div style='color: #8C8C8C; margin-bottom: 10px;'>各キャンペーンの個別の計算結果（既存C対象額・SOLMINAC対象額）なども確認できます。</div>", unsafe_allow_html=True)
             all_display_columns = ['ID', 'メールアドレス', 'is_solmina', 'is_registered', '保有fundID一覧', '既存C対象額', 'SOLMINAC対象額', '最終対象金額', '配布済金額', '今回配布金額']
             st.dataframe(master_df[all_display_columns], use_container_width=True)
+
+else:
+    # 💡 必須ファイルが揃っていない時の案内もリッチに
+    st.markdown("""
+    <div style='border-left: 2px solid #C5A059; padding-left: 15px; color: #8C8C8C; margin-top: 20px; line-height: 1.6;'>
+        左側のパネルより、計算に必要なCSVファイル（投資家一覧、出資者一覧、SOLMINAリスト）をアップロードしてください。<br>
+        すべての必須ファイルが揃うと、自動的に計算が開始されます。
+    </div>
+    """, unsafe_allow_html=True)
