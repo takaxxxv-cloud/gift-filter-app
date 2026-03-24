@@ -16,8 +16,8 @@ def load_csv_safe(file):
     return pd.read_csv(file, encoding='cp932', encoding_errors='replace')
 
 # --- タイトル ---
-st.title("🌐 Data Nexus - Amazonギフト配布リスト作成ツール")
-st.markdown("複数のデータを統合し、対象者と配布金額を瞬時に算出。ファイルの読み込みからリスト生成まで、すべて全自動で実行されます。")
+st.title("🌐 Data Nexus - 総合ギフト配布リスト作成ツール")
+st.markdown("Amazonギフトとデジタルギフトの複数キャンペーンを統合処理。複雑な条件を自動照合し、瞬時にリストを生成します。")
 
 # --- 左側のサイドバー ---
 with st.sidebar:
@@ -25,21 +25,21 @@ with st.sidebar:
     st.write("必要なCSVファイルをアップロードしてください。")
     
     uploaded_file_members = st.file_uploader("1. 投資家一覧CSV（★複数選択OK）", type="csv", accept_multiple_files=True)
-    uploaded_file_investors = st.file_uploader("2. 出資者一覧CSV（★複数選択OK）\n※ファイル名は「1.csv」「20.csv」等に", type="csv", accept_multiple_files=True)
+    uploaded_file_investors = st.file_uploader("2. 出資者一覧CSV（★複数選択OK）\n※ファイル名は「1.csv」「17.csv」等に", type="csv", accept_multiple_files=True)
     uploaded_file_solmina = st.file_uploader("3. SOLMINA投資家リストCSV（必須）", type="csv")
-    uploaded_file_gifts = st.file_uploader("4. 配布済みリストCSV（任意）", type="csv")
+    uploaded_file_gifts = st.file_uploader("4. 過去の全配布済みリストCSV（任意）", type="csv")
     
     st.divider()
-    st.caption("💡 【既存C (MAX4000円)】\n"
-               "・1~4あり ＆ 5か6あり → 4,000円\n"
-               "・1~4なし ＆ 5~19あり → 2,000円\n\n"
-               "💡 【SOLMINA C (MAX4000円)】\n"
-               "・登録2000円＋13号まで投資2000円\n"
-               "※既存とSOLMINAは高い方を適用\n\n"
-               "💡 【20号限定ボーナス (別途加算)】\n"
-               "・10万~: 1,000円 / 50万~: 3,000円\n"
-               "・100万~: 6,000円 / 200万~: 10,000円\n"
-               "・500万~: 20,000円")
+    st.caption("🟧 【Amazonギフト】\n"
+               "①既存C (MAX4000円)\n"
+               "②SOLMINA C (MAX4000円)\n"
+               "※①と②は高い方を適用\n"
+               "③20号限定ボーナス (出資額別 MAX2万円)\n"
+               "※③は別途加算\n\n"
+               "🟦 【デジタルギフト】\n"
+               "④17号限定ボーナス (出資額別 MAX2万円)\n"
+               "⑤20~24号の新規投資家ボーナス (4000円)\n"
+               "※1~19号未投資かつ20~24号投資で適用")
 
 # --- メイン画面 ---
 if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
@@ -67,15 +67,16 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
         if missing_sol: st.error("エラー: SOLMINA投資家リストCSVに「メールアドレス」が見つかりません。")
         st.info("※すべてのファイルの照合キーとして「メールアドレス」の列を使用します。")
     else:
-        # 💡 【追加処理】出資金額の読み取りとクリーンアップ
+        # 出資金額の読み取りとクリーンアップ（17号と20号用）
         if '出資金額' in df_inv.columns:
             df_inv['出資金額'] = df_inv['出資金額'].astype(str).str.replace(',', '', regex=False).str.replace('¥', '', regex=False).str.replace('円', '', regex=False)
             df_inv['出資金額'] = pd.to_numeric(df_inv['出資金額'], errors='coerce').fillna(0)
-            # 20号ファンドの出資金額だけを抽出する列を作成
+            df_inv['fund17_amount'] = df_inv.apply(lambda x: x['出資金額'] if x['fundID'] == '17' else 0, axis=1)
             df_inv['fund20_amount'] = df_inv.apply(lambda x: x['出資金額'] if x['fundID'] == '20' else 0, axis=1)
         else:
+            df_inv['fund17_amount'] = 0
             df_inv['fund20_amount'] = 0
-            st.warning("⚠️ 出資者一覧CSVに「出資金額」という列が見つかりません。20号のキャンペーンは0円として計算されます。")
+            st.warning("⚠️ 出資者一覧CSVに「出資金額」列が見つかりません。17号・20号の金額別キャンペーンは0円で計算されます。")
 
         gift_summary = pd.DataFrame(columns=['メールアドレス', '配布済金額'])
         if uploaded_file_gifts is not None:
@@ -85,8 +86,6 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
                 df_gift['金額'] = pd.to_numeric(df_gift['金額'], errors='coerce').fillna(0)
                 gift_summary = df_gift.groupby('受取人様Eメール')['金額'].sum().reset_index()
                 gift_summary = gift_summary.rename(columns={'受取人様Eメール': 'メールアドレス', '金額': '配布済金額'})
-            else:
-                st.warning("配布済みリストの列名（受取人様Eメール, 金額）が不正です。今回は0円として計算します。")
 
         st.write("### 📊 計算結果レポート")
         
@@ -104,13 +103,14 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
         master_df['is_solmina'] = master_df['メールアドレス'].isin(emails_sol)
         master_df['is_registered'] = master_df['メールアドレス'].isin(emails_mem)
         
-        # 💡 【変更】メールアドレスごとにfundIDのリストと、20号の合計投資額をまとめる
         grouped_inv = df_inv.groupby('メールアドレス').agg(
             fund_list=('fundID', list),
+            fund17_amount=('fund17_amount', 'sum'),
             fund20_amount=('fund20_amount', 'sum')
         ).reset_index()
         
         master_df = master_df.merge(grouped_inv, on='メールアドレス', how='left')
+        master_df['fund17_amount'] = master_df['fund17_amount'].fillna(0)
         master_df['fund20_amount'] = master_df['fund20_amount'].fillna(0)
         
         id_mapping_inv = df_inv.groupby('メールアドレス')['ID'].first()
@@ -124,13 +124,14 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
 
         def calculate_all_rewards(row):
             funds = row['fund_list']
-            if not isinstance(funds, list):
-                funds = []
+            if not isinstance(funds, list): funds = []
                 
             has_1_to_4 = False
             has_5_or_6 = False
             has_5_to_19 = False 
             has_invested_up_to_13 = False
+            has_1_to_19 = False # 1~19号(6r含む)への投資履歴
+            has_20_to_24 = False # 20~24号への投資履歴
             
             for f in funds:
                 f_lower = f.lower()
@@ -141,54 +142,72 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
                 if f_lower == '6r':
                     has_5_to_19 = True
                     has_invested_up_to_13 = True
+                    has_1_to_19 = True
                 else:
                     try:
                         f_num = float(f)
                         if 5 <= f_num <= 19: has_5_to_19 = True
                         if f_num <= 13: has_invested_up_to_13 = True
+                        if 1 <= f_num <= 19: has_1_to_19 = True
+                        if 20 <= f_num <= 24: has_20_to_24 = True
                     except:
                         pass
             
-            # 【A】既存キャンペーン
+            # --- 【Amazonギフト計算】 ---
             reward_existing = 0
-            if has_1_to_4 and has_5_or_6:
-                reward_existing = 4000
-            elif not has_1_to_4 and has_5_to_19:
-                reward_existing = 2000
+            if has_1_to_4 and has_5_or_6: reward_existing = 4000
+            elif not has_1_to_4 and has_5_to_19: reward_existing = 2000
             
-            # 【B】SOLMINAキャンペーン
             reward_solmina = 0
             if row['is_solmina'] and row['is_registered']:
                 reward_solmina += 2000 
-                if has_invested_up_to_13:
-                    reward_solmina += 2000 
+                if has_invested_up_to_13: reward_solmina += 2000 
                     
-            # 💡 【C】20号ファンド キャンペーン
             amount_20 = row['fund20_amount']
             reward_20 = 0
-            if amount_20 >= 5000000:
-                reward_20 = 20000
-            elif amount_20 >= 2000000:
-                reward_20 = 10000
-            elif amount_20 >= 1000000:
-                reward_20 = 6000
-            elif amount_20 >= 500000:
-                reward_20 = 3000
-            elif amount_20 >= 100000:
-                reward_20 = 1000
+            if amount_20 >= 5000000: reward_20 = 20000
+            elif amount_20 >= 2000000: reward_20 = 10000
+            elif amount_20 >= 1000000: reward_20 = 6000
+            elif amount_20 >= 500000: reward_20 = 3000
+            elif amount_20 >= 100000: reward_20 = 1000
 
-            # 最終金額の計算（既存・SOLMINAの高い方 ＋ 20号ボーナス）
-            final_reward = max(reward_existing, reward_solmina) + reward_20
+            amazon_total = max(reward_existing, reward_solmina) + reward_20
+
+            # --- 【デジタルギフト計算】 ---
+            amount_17 = row['fund17_amount']
+            reward_dg_17 = 0
+            if amount_17 >= 5000000: reward_dg_17 = 20000
+            elif amount_17 >= 2000000: reward_dg_17 = 10000
+            elif amount_17 >= 1000000: reward_dg_17 = 6000
+            elif amount_17 >= 500000: reward_dg_17 = 3000
+            elif amount_17 >= 100000: reward_dg_17 = 1000
+
+            reward_dg_new = 0
+            if not has_1_to_19 and has_20_to_24:
+                reward_dg_new = 4000
+                
+            digital_total = reward_dg_17 + reward_dg_new
+
+            # --- 総合計 ---
+            grand_total = amazon_total + digital_total
             
-            return pd.Series([reward_existing, reward_solmina, reward_20, final_reward])
+            return pd.Series([
+                amazon_total, digital_total, grand_total,
+                reward_existing, reward_solmina, reward_20,
+                reward_dg_17, reward_dg_new
+            ])
 
-        master_df[['既存C対象額', 'SOLMINAC対象額', '20号C対象額', '最終対象金額']] = master_df.apply(calculate_all_rewards, axis=1)
+        master_df[[
+            'Amazon対象額', 'デジタル対象額', '総合対象金額',
+            '既存C対象額', 'SOLMINAC対象額', '20号C対象額',
+            '17号DGC対象額', '新規20_24DGC対象額'
+        ]] = master_df.apply(calculate_all_rewards, axis=1)
         
-        master_df['今回配布金額'] = master_df['最終対象金額'] - master_df['配布済金額']
+        master_df['今回配布金額'] = master_df['総合対象金額'] - master_df['配布済金額']
         master_df['今回配布金額'] = master_df['今回配布金額'].apply(lambda x: max(0, x))
         master_df['保有fundID一覧'] = master_df['fund_list'].apply(lambda x: ', '.join(x) if isinstance(x, list) else '')
 
-        target_df = master_df[master_df['最終対象金額'] > 0].copy()
+        target_df = master_df[master_df['総合対象金額'] > 0].copy()
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -196,26 +215,37 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
         with col2:
             st.metric(label="💰 今回の配布予定総額", value=f"¥ {int(target_df['今回配布金額'].sum()):,}")
         with col3:
-            st.metric(label="（参考）本来の対象総額", value=f"¥ {int(target_df['最終対象金額'].sum()):,}")
+            st.metric(label="（参考）本来の総合対象総額", value=f"¥ {int(target_df['総合対象金額'].sum()):,}")
 
         st.write("")
         tab1, tab2 = st.tabs(["🎁 今回配布するリスト", "📋 全員の計算結果（詳細・確認用）"])
         
         with tab1:
             distribute_df = target_df[target_df['今回配布金額'] > 0]
-            display_columns = ['ID', 'メールアドレス', 'is_solmina', '保有fundID一覧', '既存C対象額', 'SOLMINAC対象額', '20号C対象額', '最終対象金額', '配布済金額', '今回配布金額']
+            display_columns = ['ID', 'メールアドレス', '保有fundID一覧', 'Amazon対象額', 'デジタル対象額', '総合対象金額', '配布済金額', '今回配布金額']
             
             if len(distribute_df) > 0:
                 st.dataframe(distribute_df[display_columns], use_container_width=True)
                 csv_data = distribute_df[display_columns].to_csv(index=False).encode('utf-8-sig')
-                st.download_button(label="📥 今回配布リストをダウンロード", data=csv_data, file_name="ギフト今回配布リスト.csv", mime="text/csv")
+                st.download_button(label="📥 今回配布リストをダウンロード", data=csv_data, file_name="ギフト総合配布リスト.csv", mime="text/csv")
             else:
                 st.info("全員に配布済みか、新たに対象となる人がいません。")
                 
         with tab2:
-            st.write("各キャンペーンの個別の計算結果（既存C対象額・SOLMINAC対象額・20号C対象額）なども確認できます。")
-            all_display_columns = ['ID', 'メールアドレス', 'is_solmina', 'is_registered', '保有fundID一覧', 'fund20_amount', '既存C対象額', 'SOLMINAC対象額', '20号C対象額', '最終対象金額', '配布済金額', '今回配布金額']
+            st.write("各キャンペーンの個別の計算結果（Amazon枠・デジタルギフト枠の内訳）も確認できます。")
+            all_display_columns = [
+                'ID', 'メールアドレス', '保有fundID一覧', 
+                'fund17_amount', 'fund20_amount',
+                '既存C対象額', 'SOLMINAC対象額', '20号C対象額', 'Amazon対象額',
+                '17号DGC対象額', '新規20_24DGC対象額', 'デジタル対象額',
+                '総合対象金額', '配布済金額', '今回配布金額'
+            ]
             
-            # 見やすくリネームして表示
-            display_df = master_df[all_display_columns].rename(columns={'fund20_amount': '20号出資総額'})
+            display_df = master_df[all_display_columns].rename(columns={
+                'fund17_amount': '17号出資総額',
+                'fund20_amount': '20号出資総額'
+            })
             st.dataframe(display_df, use_container_width=True)
+
+else:
+    pass
