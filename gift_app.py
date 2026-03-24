@@ -67,7 +67,6 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
         if missing_sol: st.error("エラー: SOLMINA投資家リストCSVに「メールアドレス」が見つかりません。")
         st.info("※すべてのファイルの照合キーとして「メールアドレス」の列を使用します。")
     else:
-        # 出資金額の読み取りとクリーンアップ（17号と20号用）
         if '出資金額' in df_inv.columns:
             df_inv['出資金額'] = df_inv['出資金額'].astype(str).str.replace(',', '', regex=False).str.replace('¥', '', regex=False).str.replace('円', '', regex=False)
             df_inv['出資金額'] = pd.to_numeric(df_inv['出資金額'], errors='coerce').fillna(0)
@@ -130,8 +129,8 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
             has_5_or_6 = False
             has_5_to_19 = False 
             has_invested_up_to_13 = False
-            has_1_to_19 = False # 1~19号(6r含む)への投資履歴
-            has_20_to_24 = False # 20~24号への投資履歴
+            has_1_to_19 = False 
+            has_20_to_24 = False 
             
             for f in funds:
                 f_lower = f.lower()
@@ -187,8 +186,6 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
                 reward_dg_new = 4000
                 
             digital_total = reward_dg_17 + reward_dg_new
-
-            # --- 総合計 ---
             grand_total = amazon_total + digital_total
             
             return pd.Series([
@@ -203,30 +200,43 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
             '17号DGC対象額', '新規20_24DGC対象額'
         ]] = master_df.apply(calculate_all_rewards, axis=1)
         
-        master_df['今回配布金額'] = master_df['総合対象金額'] - master_df['配布済金額']
-        master_df['今回配布金額'] = master_df['今回配布金額'].apply(lambda x: max(0, x))
+        # 💡 【重要】今回の配布額をAmazonとデジタルに分けて計算（Amazonから優先して差し引く）
+        master_df['今回Amazon配布額'] = master_df['Amazon対象額'] - master_df['配布済金額']
+        master_df['今回Amazon配布額'] = master_df['今回Amazon配布額'].apply(lambda x: max(0, x))
+        
+        # Amazon枠で引ききれなかった配布済金額があれば、デジタル枠から引く
+        master_df['未消化の配布済金額'] = master_df['配布済金額'] - master_df['Amazon対象額']
+        master_df['未消化の配布済金額'] = master_df['未消化の配布済金額'].apply(lambda x: max(0, x))
+        
+        master_df['今回デジタル配布額'] = master_df['デジタル対象額'] - master_df['未消化の配布済金額']
+        master_df['今回デジタル配布額'] = master_df['今回デジタル配布額'].apply(lambda x: max(0, x))
+
+        # 今回の総配布額（最終結果）
+        master_df['今回配布金額'] = master_df['今回Amazon配布額'] + master_df['今回デジタル配布額']
         master_df['保有fundID一覧'] = master_df['fund_list'].apply(lambda x: ', '.join(x) if isinstance(x, list) else '')
 
-        target_df = master_df[master_df['総合対象金額'] > 0].copy()
+        target_df = master_df[master_df['今回配布金額'] > 0].copy()
         
-        col1, col2, col3 = st.columns(3)
+        # 💡 メトリクス表示も4分割にして一目で分かるように変更！
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric(label="🎯 今回の新規配布対象者数", value=f"{len(target_df[target_df['今回配布金額'] > 0])} 名")
+            st.metric(label="🎯 今回の対象者数", value=f"{len(target_df)} 名")
         with col2:
-            st.metric(label="💰 今回の配布予定総額", value=f"¥ {int(target_df['今回配布金額'].sum()):,}")
+            st.metric(label="🟧 今回のAmazon予定額", value=f"¥ {int(target_df['今回Amazon配布額'].sum()):,}")
         with col3:
-            st.metric(label="（参考）本来の総合対象総額", value=f"¥ {int(target_df['総合対象金額'].sum()):,}")
+            st.metric(label="🟦 今回のデジタル予定額", value=f"¥ {int(target_df['今回デジタル配布額'].sum()):,}")
+        with col4:
+            st.metric(label="💰 総合配布予定総額", value=f"¥ {int(target_df['今回配布金額'].sum()):,}")
 
         st.write("")
         tab1, tab2 = st.tabs(["🎁 今回配布するリスト", "📋 全員の計算結果（詳細・確認用）"])
         
         with tab1:
-            distribute_df = target_df[target_df['今回配布金額'] > 0]
-            display_columns = ['ID', 'メールアドレス', '保有fundID一覧', 'Amazon対象額', 'デジタル対象額', '総合対象金額', '配布済金額', '今回配布金額']
-            
-            if len(distribute_df) > 0:
-                st.dataframe(distribute_df[display_columns], use_container_width=True)
-                csv_data = distribute_df[display_columns].to_csv(index=False).encode('utf-8-sig')
+            if len(target_df) > 0:
+                # 表の列も分かりやすく並び替え
+                display_columns = ['ID', 'メールアドレス', '保有fundID一覧', 'Amazon対象額', 'デジタル対象額', '配布済金額', '今回Amazon配布額', '今回デジタル配布額', '今回配布金額']
+                st.dataframe(target_df[display_columns], use_container_width=True)
+                csv_data = target_df[display_columns].to_csv(index=False).encode('utf-8-sig')
                 st.download_button(label="📥 今回配布リストをダウンロード", data=csv_data, file_name="ギフト総合配布リスト.csv", mime="text/csv")
             else:
                 st.info("全員に配布済みか、新たに対象となる人がいません。")
@@ -238,7 +248,7 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
                 'fund17_amount', 'fund20_amount',
                 '既存C対象額', 'SOLMINAC対象額', '20号C対象額', 'Amazon対象額',
                 '17号DGC対象額', '新規20_24DGC対象額', 'デジタル対象額',
-                '総合対象金額', '配布済金額', '今回配布金額'
+                '総合対象金額', '配布済金額', '今回Amazon配布額', '今回デジタル配布額', '今回配布金額'
             ]
             
             display_df = master_df[all_display_columns].rename(columns={
