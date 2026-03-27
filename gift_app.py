@@ -17,7 +17,7 @@ def load_csv_safe(file):
 
 # --- タイトル ---
 st.title("🌐 Data Nexus - 総合ギフト配布リスト作成ツール")
-st.markdown("Amazonギフトとデジタルギフトの複数キャンペーンを統合処理。複雑な条件を自動照合し、瞬時にリストを生成します。")
+st.markdown("Amazonギフト（3月末/4月末）とデジタルギフトの複数キャンペーンを統合処理し、瞬時にリストを生成します。")
 
 # --- 左側のサイドバー ---
 with st.sidebar:
@@ -30,16 +30,14 @@ with st.sidebar:
     uploaded_file_gifts = st.file_uploader("4. 過去の全配布済みリストCSV（任意）", type="csv")
     
     st.divider()
-    st.caption("🟧 【Amazonギフト】\n"
-               "①既存C (MAX4000円)\n"
-               "②SOLMINA C (MAX4000円)\n"
-               "※①と②は高い方を適用\n"
-               "③20号限定ボーナス (出資額別 MAX2万円)\n"
-               "※③は別途加算\n\n"
+    st.caption("🟧 【Amazon 3月末配布】\n"
+               "・既存C または SOLMINAC（1~18号引金）\n\n"
+               "🟧 【Amazon 4月末配布】\n"
+               "・既存C（19号のみ引金の場合）\n"
+               "・20号限定ボーナス\n\n"
                "🟦 【デジタルギフト】\n"
-               "④17号限定ボーナス (出資額別 MAX2万円)\n"
-               "⑤20~24号の新規投資家ボーナス (4000円)\n"
-               "※1~19号未投資かつ20~24号投資で適用")
+               "・17号限定ボーナス\n"
+               "・20~24号 新規投資家ボーナス")
 
 # --- メイン画面 ---
 if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
@@ -128,6 +126,7 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
             has_1_to_4 = False
             has_5_or_6 = False
             has_5_to_19 = False 
+            has_5_to_18 = False # 3月末判定用
             has_invested_up_to_13 = False
             has_1_to_19 = False 
             has_20_to_24 = False 
@@ -140,27 +139,51 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
                 
                 if f_lower == '6r':
                     has_5_to_19 = True
+                    has_5_to_18 = True
                     has_invested_up_to_13 = True
                     has_1_to_19 = True
                 else:
                     try:
                         f_num = float(f)
                         if 5 <= f_num <= 19: has_5_to_19 = True
+                        if 5 <= f_num <= 18: has_5_to_18 = True
                         if f_num <= 13: has_invested_up_to_13 = True
                         if 1 <= f_num <= 19: has_1_to_19 = True
                         if 20 <= f_num <= 24: has_20_to_24 = True
                     except:
                         pass
             
-            # --- 【Amazonギフト計算】 ---
+            # --- 【Amazonギフト計算：3月末か4月末かの判定】 ---
             reward_existing = 0
-            if has_1_to_4 and has_5_or_6: reward_existing = 4000
-            elif not has_1_to_4 and has_5_to_19: reward_existing = 2000
+            existing_is_3m = True # 既存キャンペーンが3月末引金かどうか
+            
+            if has_1_to_4 and has_5_or_6: 
+                reward_existing = 4000
+                existing_is_3m = True
+            elif not has_1_to_4 and has_5_to_19: 
+                reward_existing = 2000
+                if has_5_to_18:
+                    existing_is_3m = True
+                else:
+                    existing_is_3m = False # 19号のみで条件達成した場合は4月末
             
             reward_solmina = 0
             if row['is_solmina'] and row['is_registered']:
                 reward_solmina += 2000 
                 if has_invested_up_to_13: reward_solmina += 2000 
+            
+            # 既存CとSOLMINAは高い方を適用し、時期を割り振る
+            reward_base_3m = 0
+            reward_base_4m = 0
+            
+            if existing_is_3m:
+                reward_base_3m = max(reward_existing, reward_solmina)
+            else:
+                # 既存Cが4月末(19号)、SOLMINACが3月末の場合
+                if reward_existing > reward_solmina:
+                    reward_base_4m = reward_existing
+                else:
+                    reward_base_3m = reward_solmina
                     
             amount_20 = row['fund20_amount']
             reward_20 = 0
@@ -170,7 +193,9 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
             elif amount_20 >= 500000: reward_20 = 3000
             elif amount_20 >= 100000: reward_20 = 1000
 
-            amazon_total = max(reward_existing, reward_solmina) + reward_20
+            amazon_3m_target = reward_base_3m
+            amazon_4m_target = reward_base_4m + reward_20
+            amazon_total = amazon_3m_target + amazon_4m_target
 
             # --- 【デジタルギフト計算】 ---
             amount_17 = row['fund17_amount']
@@ -189,66 +214,89 @@ if uploaded_file_members and uploaded_file_investors and uploaded_file_solmina:
             grand_total = amazon_total + digital_total
             
             return pd.Series([
-                amazon_total, digital_total, grand_total,
+                amazon_total, amazon_3m_target, amazon_4m_target, 
+                digital_total, grand_total,
                 reward_existing, reward_solmina, reward_20,
                 reward_dg_17, reward_dg_new
             ])
 
         master_df[[
-            'Amazon対象額', 'デジタル対象額', '総合対象金額',
+            'Amazon対象額', 'Amazon3月末対象額', 'Amazon4月末対象額',
+            'デジタル対象額', '総合対象金額',
             '既存C対象額', 'SOLMINAC対象額', '20号C対象額',
             '17号DGC対象額', '新規20_24DGC対象額'
         ]] = master_df.apply(calculate_all_rewards, axis=1)
         
-        # 💡 【重要】今回の配布額をAmazonとデジタルに分けて計算（Amazonから優先して差し引く）
-        master_df['今回Amazon配布額'] = master_df['Amazon対象額'] - master_df['配布済金額']
-        master_df['今回Amazon配布額'] = master_df['今回Amazon配布額'].apply(lambda x: max(0, x))
+        # 💡 配布済金額を古いもの(3月末)から順番にマイナスしていく処理
+        master_df['今回Amazon_3月末配布額'] = master_df['Amazon3月末対象額'] - master_df['配布済金額']
+        master_df['今回Amazon_3月末配布額'] = master_df['今回Amazon_3月末配布額'].apply(lambda x: max(0, x))
+        master_df['未消化_1'] = master_df['配布済金額'] - master_df['Amazon3月末対象額']
+        master_df['未消化_1'] = master_df['未消化_1'].apply(lambda x: max(0, x))
         
-        # Amazon枠で引ききれなかった配布済金額があれば、デジタル枠から引く
-        master_df['未消化の配布済金額'] = master_df['配布済金額'] - master_df['Amazon対象額']
-        master_df['未消化の配布済金額'] = master_df['未消化の配布済金額'].apply(lambda x: max(0, x))
+        master_df['今回Amazon_4月末配布額'] = master_df['Amazon4月末対象額'] - master_df['未消化_1']
+        master_df['今回Amazon_4月末配布額'] = master_df['今回Amazon_4月末配布額'].apply(lambda x: max(0, x))
+        master_df['未消化_2'] = master_df['未消化_1'] - master_df['Amazon4月末対象額']
+        master_df['未消化_2'] = master_df['未消化_2'].apply(lambda x: max(0, x))
         
-        master_df['今回デジタル配布額'] = master_df['デジタル対象額'] - master_df['未消化の配布済金額']
+        master_df['今回デジタル配布額'] = master_df['デジタル対象額'] - master_df['未消化_2']
         master_df['今回デジタル配布額'] = master_df['今回デジタル配布額'].apply(lambda x: max(0, x))
 
-        # 今回の総配布額（最終結果）
+        master_df['今回Amazon配布額'] = master_df['今回Amazon_3月末配布額'] + master_df['今回Amazon_4月末配布額']
         master_df['今回配布金額'] = master_df['今回Amazon配布額'] + master_df['今回デジタル配布額']
+        
         master_df['保有fundID一覧'] = master_df['fund_list'].apply(lambda x: ', '.join(x) if isinstance(x, list) else '')
 
         target_df = master_df[master_df['今回配布金額'] > 0].copy()
         
-        # 💡 メトリクス表示も4分割にして一目で分かるように変更！
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric(label="🎯 今回の対象者数", value=f"{len(target_df)} 名")
-        with col2:
-            st.metric(label="🟧 今回のAmazon予定額", value=f"¥ {int(target_df['今回Amazon配布額'].sum()):,}")
-        with col3:
-            st.metric(label="🟦 今回のデジタル予定額", value=f"¥ {int(target_df['今回デジタル配布額'].sum()):,}")
-        with col4:
-            st.metric(label="💰 総合配布予定総額", value=f"¥ {int(target_df['今回配布金額'].sum()):,}")
+        # メトリクス表示を5分割に変更
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1: st.metric(label="🎯 対象者数", value=f"{len(target_df)} 名")
+        with col2: st.metric(label="🟧 Amazon3月末分", value=f"¥ {int(target_df['今回Amazon_3月末配布額'].sum()):,}")
+        with col3: st.metric(label="🟧 Amazon4月末分", value=f"¥ {int(target_df['今回Amazon_4月末配布額'].sum()):,}")
+        with col4: st.metric(label="🟦 デジタルギフト分", value=f"¥ {int(target_df['今回デジタル配布額'].sum()):,}")
+        with col5: st.metric(label="💰 総合予定総額", value=f"¥ {int(target_df['今回配布金額'].sum()):,}")
 
         st.write("")
-        tab1, tab2 = st.tabs(["🎁 今回配布するリスト", "📋 全員の計算結果（詳細・確認用）"])
+        # 💡 タブを分けて、必要なリストをすぐにダウンロードできるようにしました
+        tab1, tab2, tab3, tab4 = st.tabs(["🎁 総合リスト", "🟧 Amazon 3月末リスト", "🟧 Amazon 4月末リスト", "📋 全員の結果(詳細)"])
         
         with tab1:
             if len(target_df) > 0:
-                # 表の列も分かりやすく並び替え
-                display_columns = ['ID', 'メールアドレス', '保有fundID一覧', 'Amazon対象額', 'デジタル対象額', '配布済金額', '今回Amazon配布額', '今回デジタル配布額', '今回配布金額']
+                display_columns = ['ID', 'メールアドレス', '保有fundID一覧', '今回Amazon_3月末配布額', '今回Amazon_4月末配布額', '今回デジタル配布額', '今回配布金額']
                 st.dataframe(target_df[display_columns], use_container_width=True)
                 csv_data = target_df[display_columns].to_csv(index=False).encode('utf-8-sig')
-                st.download_button(label="📥 今回配布リストをダウンロード", data=csv_data, file_name="ギフト総合配布リスト.csv", mime="text/csv")
+                st.download_button(label="📥 総合リストをダウンロード", data=csv_data, file_name="ギフト総合配布リスト.csv", mime="text/csv")
             else:
-                st.info("全員に配布済みか、新たに対象となる人がいません。")
-                
+                st.info("新たに対象となる人がいません。")
+
         with tab2:
-            st.write("各キャンペーンの個別の計算結果（Amazon枠・デジタルギフト枠の内訳）も確認できます。")
+            amz_3m_df = target_df[target_df['今回Amazon_3月末配布額'] > 0]
+            if len(amz_3m_df) > 0:
+                cols = ['ID', 'メールアドレス', '保有fundID一覧', '今回Amazon_3月末配布額']
+                st.dataframe(amz_3m_df[cols], use_container_width=True)
+                csv_data = amz_3m_df[cols].to_csv(index=False).encode('utf-8-sig')
+                st.download_button(label="📥 Amazon3月末リストをダウンロード", data=csv_data, file_name="Amazon_3月末配布リスト.csv", mime="text/csv")
+            else:
+                st.info("3月末配布のAmazonギフト対象者はいません。")
+
+        with tab3:
+            amz_4m_df = target_df[target_df['今回Amazon_4月末配布額'] > 0]
+            if len(amz_4m_df) > 0:
+                cols = ['ID', 'メールアドレス', '保有fundID一覧', '今回Amazon_4月末配布額']
+                st.dataframe(amz_4m_df[cols], use_container_width=True)
+                csv_data = amz_4m_df[cols].to_csv(index=False).encode('utf-8-sig')
+                st.download_button(label="📥 Amazon4月末リストをダウンロード", data=csv_data, file_name="Amazon_4月末配布リスト.csv", mime="text/csv")
+            else:
+                st.info("4月末配布のAmazonギフト対象者はいません。")
+                
+        with tab4:
+            st.write("各キャンペーンの個別の計算結果や、3月末/4月末の判定内訳も確認できます。")
             all_display_columns = [
                 'ID', 'メールアドレス', '保有fundID一覧', 
                 'fund17_amount', 'fund20_amount',
-                '既存C対象額', 'SOLMINAC対象額', '20号C対象額', 'Amazon対象額',
+                '既存C対象額', 'SOLMINAC対象額', '20号C対象額', 'Amazon3月末対象額', 'Amazon4月末対象額',
                 '17号DGC対象額', '新規20_24DGC対象額', 'デジタル対象額',
-                '総合対象金額', '配布済金額', '今回Amazon配布額', '今回デジタル配布額', '今回配布金額'
+                '総合対象金額', '配布済金額', '今回Amazon_3月末配布額', '今回Amazon_4月末配布額', '今回デジタル配布額', '今回配布金額'
             ]
             
             display_df = master_df[all_display_columns].rename(columns={
